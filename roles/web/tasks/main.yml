@@ -1,0 +1,133 @@
+---
+# LAMP SERVER Configuration (With Drupal)
+
+- name: MACHINE | Install utility packages
+  package: name={{ item }} state=present
+  with_items:
+    - python-apt
+    - python-pycurl
+
+- name: PHP | Ensure that php PPA is added to Machine
+  apt_repository: repo='ppa:ondrej/php'
+
+- name: Update | Ensure apt_cache is updating
+  apt: update_cache=yes cache_valid_time=3600
+
+- name: LAMP | Install; Apache2, MySQL, PHP and other dependencies
+  package: name={{ item }} state=present
+  with_items:
+    - apache2
+    - php7.2-common
+    - php7.2-cli
+    - php7.2-dev
+    - php7.2-gd
+    - php7.2-json
+    - php7.2-opcache
+    - php7.2-xml
+    - php7.2-mbstring
+    - php7.2-pdo
+    - php7.2-mysql
+    - php-apcu
+    - libpcre3-dev
+    - libapache2-mod-php7.2
+    - python-mysqldb
+    - mysql-server
+
+- name: LAMP | Start Apache2, MySQL, PHP and enabled at boot
+  service: name={{ item }} state=started enabled=yes
+  with_items:
+    - apache2
+    - mysql
+# Apache Configuration
+
+- name: APACHE | Enable Apache2 rewrite module (Required for Drupal)
+  apache2_module: name=rewrite state=present 
+  notify: restart apache
+
+- name: APACHE | Add VHost for Drupal 8 development
+  template: src=template/drupal.test.conf/j2 dest=/etc/apache2/sites-available/{{ domain }}.test.conf
+  owner: vagrant
+  group: vagrant
+  mode: 0644
+  notify: restart apache
+
+- name: APACHE | Symlink Drupal Vhost to sites-enabled
+  file: src=/etc/apache2/sites-available/{{ domain }}.test.conf dest=/etc/apache2/sites-enabled/{{ domain }}.test.conf
+  state: link
+  notify: restart apache
+
+- name: APACHE | Remove defualt vhost file
+  file: path=/etc/apache2/sites-enabled/000-default.conf state=absent
+  notify: restart apache
+
+# PHP Configuration
+
+- name: PHP | Adjust OpCache memory setting 
+  lineinfile: dest=/etc/php/7.2/apache2/conf.d/10-opcache.ini
+  regexp:   opcache.memory_consumption = 96
+  state: present
+  notify: restart apache
+
+# MySQL Configuration
+
+- name: MySQL | Remove the MySQL test db
+  mysql_db: db=test state=absent
+
+- name: Create a db for Drupal
+  mysql_db: db={{ domain }} state=present
+  
+- name: Create a MySQL user for Drupal
+  mysql_user: 
+    name: {{ domain }}
+    password: 12345
+    priv: {{ domain }}.*ALL
+    host: localhost
+    state: present
+
+# Install Composer and Drush
+
+- name: Composer | Download Composer installer
+  get_url:
+    url: https://getcomposer.org/installer
+    dest: /tmp/composer-installer.php
+    mode: 0755
+
+- name: Composer | Run Composer installer
+  command: >
+    php composer-installer.php
+    chdir=/tmp
+    creates=/usr/local/bin/composer
+
+- name: Composer | Move Composer into Globally-accessible location
+  shell: >
+    mv /tmp/composer.phar /usr/local/bin/composer
+    creates=/usr/local/bin/composer
+
+- name: Drush | install drush
+  git:
+   repo: https://github.com/drush-ops/drush.git
+   version: 8.x
+   dest: /opt/drush
+
+- name: Install Drush dependencies with Composer
+shell: >
+  /usr/local/bin/composer install
+  chdir=/opt/drush
+  creates=/opt/drush/vendor/auroload.php
+
+- name: Create drush bin sysmlink
+  file:
+   src: /opt/drush/drush
+   dest: /usr/local/bin/drush
+   state: link
+
+# Install Drupal with GIT and Drush
+
+- name: Drupal | Check out Drupal Core to the Apache docroot
+  git:
+    repo: http://git.drupal.org/project/drupal.git
+    version: {{ drupal_core_version }}
+    dest:  {{ drupal_core_path }}
+    
+
+      

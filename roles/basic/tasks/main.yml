@@ -1,0 +1,7 @@
+---
+- name: BASIC | Install common packages
+  package: name={{ item }} state=present
+  with_items:
+    - vim
+    - nano
+    - git
