@@ -110,10 +110,10 @@
    dest: /opt/drush
 
 - name: Install Drush dependencies with Composer
-shell: >
-  /usr/local/bin/composer install
-  chdir=/opt/drush
-  creates=/opt/drush/vendor/auroload.php
+  shell: >
+    /usr/local/bin/composer install
+    chdir=/opt/drush
+    creates=/opt/drush/vendor/auroload.php
 
 - name: Create drush bin sysmlink
   file:
@@ -129,5 +129,28 @@ shell: >
     version: {{ drupal_core_version }}
     dest:  {{ drupal_core_path }}
     
+- name: Drupal | Install Drupal dependencies with Composer
+  shell: >
+    /usr/local/bin/composer install
+    chdir={{ drupal_core_path }}
+    creates={{ drupal_core_path }}/vendor/autoload.php
+
+- name: Drupal | Install Drupal
+  command: >
+    drush si -y --site-name={{ drupal_site_name }}
+    --account-name=admin
+    --account-pass=admin
+    --db-url=mysql://{{ domain }}:1234@localhost/{{ domain }}
+    --root={{ drupal_core_path }}
+    creates={{ drupal_core_path }}/sites/default/setting.php
+  notify: restart apache
+
+- name: Drupal | Set permissions properly on setting php
+  file:
+    path: {{ drupal_core_path }}/sites/default/files
+    mode: 0777
+    state: directory
+    recurse: yes
+     
 
       
